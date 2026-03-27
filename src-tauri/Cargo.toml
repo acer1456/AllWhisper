@@ -1,0 +1,37 @@
+[package]
+name = "allwhisper"
+version = "0.1.0"
+description = "AllWhisper - Video to Transcript Desktop App"
+authors = []
+license = ""
+repository = ""
+edition = "2021"
+
+[lib]
+name = "allwhisper_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+translators = { version = "0.1.5", features = ["google", "tokio-async"] }
+
+# Optional: enable with --features local-whisper
+whisper-rs = { version = "0.16", optional = true }
+hound = { version = "3", optional = true }
+
+[features]
+default = []
+local-whisper = ["dep:whisper-rs", "dep:hound"]
+
+[profile.release]
+opt-level = "s"
+strip = true

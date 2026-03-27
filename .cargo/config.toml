@@ -1,0 +1,4 @@
+# whisper.cpp 的 ggml-backend-reg.cpp 使用 std::filesystem，
+# 需要 macOS 10.15+。force = true 確保覆蓋 Tauri/cc crate 可能設的舊值。
+[env]
+MACOSX_DEPLOYMENT_TARGET = { value = "10.15", force = true }
