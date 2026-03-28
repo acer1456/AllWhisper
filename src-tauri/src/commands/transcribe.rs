@@ -20,41 +20,99 @@ fn loc(lang: &str, zh_tw: &str, zh_cn: &str, en: &str, ko: &str, vi: &str) -> St
 /// macOS .app bundles launch with a minimal PATH that excludes Homebrew,
 /// so we probe known install locations in addition to PATH.
 fn find_ffmpeg() -> Option<PathBuf> {
-    // First: try whatever is in the current PATH
-    if let Ok(out) = Command::new("which").arg("ffmpeg").output() {
+    // First: try PATH lookup — use platform-appropriate command
+    #[cfg(target_os = "windows")]
+    let lookup_cmd = ("where", "ffmpeg.exe");
+    #[cfg(not(target_os = "windows"))]
+    let lookup_cmd = ("which", "ffmpeg");
+
+    if let Ok(out) = Command::new(lookup_cmd.0).arg(lookup_cmd.1).output() {
         if out.status.success() {
-            let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let p = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !p.is_empty() {
                 return Some(PathBuf::from(p));
             }
         }
     }
 
-    // Second: probe common install directories (covers Homebrew Apple Silicon / Intel,
-    // MacPorts, nix, Linux distros, and user-local installs)
-    let candidates = [
-        "/opt/homebrew/bin/ffmpeg",   // Homebrew on Apple Silicon
-        "/usr/local/bin/ffmpeg",       // Homebrew on Intel Mac
-        "/opt/local/bin/ffmpeg",       // MacPorts
-        "/nix/var/nix/profiles/default/bin/ffmpeg",
-        "/home/linuxbrew/.linuxbrew/bin/ffmpeg",
-        "/usr/bin/ffmpeg",
-        "/bin/ffmpeg",
-    ];
+    // Second: probe well-known install paths per platform
+    #[cfg(target_os = "windows")]
+    {
+        // Common Windows install locations for ffmpeg
+        let win_candidates = [
+            r"C:\ffmpeg\bin\ffmpeg.exe",
+            r"C:\ffmpeg\ffmpeg.exe",
+            r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+            r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+        ];
+        for path in &win_candidates {
+            let p = Path::new(path);
+            if p.exists() {
+                return Some(p.to_path_buf());
+            }
+        }
 
-    for path in &candidates {
-        let p = Path::new(path);
-        if p.exists() {
-            return Some(p.to_path_buf());
+        // Chocolatey installs to C:\ProgramData\chocolatey\bin
+        let choco = Path::new(r"C:\ProgramData\chocolatey\bin\ffmpeg.exe");
+        if choco.exists() {
+            return Some(choco.to_path_buf());
+        }
+
+        // Scoop installs to %USERPROFILE%\scoop\shims
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            let scoop = PathBuf::from(&profile).join(r"scoop\shims\ffmpeg.exe");
+            if scoop.exists() {
+                return Some(scoop);
+            }
+            // Also check scoop apps directory directly
+            let scoop_app = PathBuf::from(&profile).join(r"scoop\apps\ffmpeg\current\bin\ffmpeg.exe");
+            if scoop_app.exists() {
+                return Some(scoop_app);
+            }
+        }
+
+        // winget may install to ProgramFiles
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            for sub in &[r"ffmpeg\bin\ffmpeg.exe", r"ffmpeg-essentials_build\bin\ffmpeg.exe"] {
+                let p = PathBuf::from(&pf).join(sub);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
         }
     }
 
-    // Third: check common user-level paths from HOME
-    if let Ok(home) = std::env::var("HOME") {
-        for sub in &[".local/bin/ffmpeg", "bin/ffmpeg"] {
-            let p = PathBuf::from(&home).join(sub);
+    #[cfg(not(target_os = "windows"))]
+    {
+        // macOS / Linux common paths
+        let unix_candidates = [
+            "/opt/homebrew/bin/ffmpeg",   // Homebrew Apple Silicon
+            "/usr/local/bin/ffmpeg",       // Homebrew Intel Mac
+            "/opt/local/bin/ffmpeg",       // MacPorts
+            "/nix/var/nix/profiles/default/bin/ffmpeg",
+            "/home/linuxbrew/.linuxbrew/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+            "/bin/ffmpeg",
+        ];
+        for path in &unix_candidates {
+            let p = Path::new(path);
             if p.exists() {
-                return Some(p);
+                return Some(p.to_path_buf());
+            }
+        }
+
+        // User-level installs
+        if let Ok(home) = std::env::var("HOME") {
+            for sub in &[".local/bin/ffmpeg", "bin/ffmpeg"] {
+                let p = PathBuf::from(&home).join(sub);
+                if p.exists() {
+                    return Some(p);
+                }
             }
         }
     }
